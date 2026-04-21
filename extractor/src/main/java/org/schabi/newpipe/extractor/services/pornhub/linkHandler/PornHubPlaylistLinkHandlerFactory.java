@@ -1,21 +1,25 @@
-// Created by Fynn Godau 2019, licensed GNU GPL version 3 or later
+// Forked from Fynn Godau's NewPipe Bandcamp extractor (2019), GNU GPL v3+.
+// Reworked for PornHub by msiuuu, 2026.
 
 package org.schabi.newpipe.extractor.services.pornhub.linkHandler;
 
 import org.schabi.newpipe.extractor.exceptions.ParsingException;
 import org.schabi.newpipe.extractor.linkhandler.ListLinkHandlerFactory;
-import org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubExtractorHelper;
-import org.schabi.newpipe.extractor.utils.Utils;
 
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
-/**
- * Just as with streams, the album ids are essentially useless for us.
- */
 public final class PornHubPlaylistLinkHandlerFactory extends ListLinkHandlerFactory {
 
-    private static final PornHubPlaylistLinkHandlerFactory INSTANCE
-            = new PornHubPlaylistLinkHandlerFactory();
+    private static final String CANONICAL_URL = "https://www.pornhub.com/playlist/";
+
+    private static final Pattern PLAYLIST_PATTERN = Pattern.compile(
+            "^https?://([a-z0-9-]+\\.)?pornhub\\.com/playlist/(\\d+)",
+            Pattern.CASE_INSENSITIVE);
+
+    private static final PornHubPlaylistLinkHandlerFactory INSTANCE =
+            new PornHubPlaylistLinkHandlerFactory();
 
     private PornHubPlaylistLinkHandlerFactory() {
     }
@@ -25,30 +29,26 @@ public final class PornHubPlaylistLinkHandlerFactory extends ListLinkHandlerFact
     }
 
     @Override
-    public String getId(final String url) throws ParsingException, UnsupportedOperationException {
-        return getUrl(url);
+    public String getId(final String url)
+            throws ParsingException, UnsupportedOperationException {
+        final Matcher m = PLAYLIST_PATTERN.matcher(url);
+        if (!m.find()) {
+            throw new ParsingException(
+                    "Could not extract playlist id from URL: " + url);
+        }
+        return m.group(2);
     }
 
     @Override
-    public String getUrl(final String url,
+    public String getUrl(final String id,
                          final List<String> contentFilter,
                          final String sortFilter)
             throws ParsingException, UnsupportedOperationException {
-        return Utils.replaceHttpWithHttps(url);
+        return CANONICAL_URL + id;
     }
 
-    /**
-     * Accepts all pornhub URLs that contain /album/ behind their domain name.
-     */
     @Override
     public boolean onAcceptUrl(final String url) throws ParsingException {
-
-        // Exclude URLs which do not lead to an album
-        if (!url.toLowerCase().matches("https?://.+\\..+/album/.+")) {
-            return false;
-        }
-
-        // Test whether domain is supported
-        return PornHubExtractorHelper.isArtistDomain(url);
+        return PLAYLIST_PATTERN.matcher(url).find();
     }
 }
