@@ -1,8 +1,7 @@
-// Created by Fynn Godau 2019, licensed GNU GPL version 3 or later
+// Forked from Fynn Godau's NewPipe Bandcamp extractor (2019), GNU GPL v3+.
+// Reworked for PornHub by msiuuu, 2026.
 
 package org.schabi.newpipe.extractor.services.pornhub.linkHandler;
-
-import static org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubExtractorHelper.BASE_URL;
 
 import org.schabi.newpipe.extractor.exceptions.ParsingException;
 import org.schabi.newpipe.extractor.linkhandler.SearchQueryHandlerFactory;
@@ -12,8 +11,11 @@ import java.util.List;
 
 public final class PornHubSearchQueryHandlerFactory extends SearchQueryHandlerFactory {
 
-    private static final PornHubSearchQueryHandlerFactory INSTANCE
-            = new PornHubSearchQueryHandlerFactory();
+    private static final String SEARCH_URL =
+            "https://www.pornhub.com/video/search?search=";
+
+    private static final PornHubSearchQueryHandlerFactory INSTANCE =
+            new PornHubSearchQueryHandlerFactory();
 
     private PornHubSearchQueryHandlerFactory() {
     }
@@ -27,6 +29,6 @@ public final class PornHubSearchQueryHandlerFactory extends SearchQueryHandlerFa
                          final List<String> contentFilter,
                          final String sortFilter)
             throws ParsingException, UnsupportedOperationException {
-        return BASE_URL + "/search?q=" + Utils.encodeUrlUtf8(query) + "&page=1";
+        return SEARCH_URL + Utils.encodeUrlUtf8(query);
     }
 }
