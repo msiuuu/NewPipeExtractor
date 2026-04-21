@@ -3,6 +3,7 @@ package org.schabi.newpipe.extractor;
 import org.schabi.newpipe.extractor.services.bandcamp.BandcampService;
 import org.schabi.newpipe.extractor.services.media_ccc.MediaCCCService;
 import org.schabi.newpipe.extractor.services.peertube.PeertubeService;
+import org.schabi.newpipe.extractor.services.pornhub.PornHubService;
 import org.schabi.newpipe.extractor.services.soundcloud.SoundcloudService;
 import org.schabi.newpipe.extractor.services.youtube.YoutubeService;
 
@@ -40,13 +41,14 @@ public final class ServiceList {
     public static final MediaCCCService MediaCCC = new MediaCCCService(2);
     public static final PeertubeService PeerTube = new PeertubeService(3);
     public static final BandcampService Bandcamp = new BandcampService(4);
+    public static final PornHubService PornHub = new PornHubService(5);
 
     /**
      * When creating a new service, put this service in the end of this list,
      * and give it the next free id.
      */
     private static final List<StreamingService> SERVICES = List.of(
-            YouTube, SoundCloud, MediaCCC, PeerTube, Bandcamp);
+            YouTube, SoundCloud, MediaCCC, PeerTube, Bandcamp, PornHub);
 
     /**
      * Get all the supported services.
