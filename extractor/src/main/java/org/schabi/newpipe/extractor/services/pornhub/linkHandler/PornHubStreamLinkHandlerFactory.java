@@ -1,24 +1,29 @@
-// Created by Fynn Godau 2019, licensed GNU GPL version 3 or later
+// Forked from Fynn Godau's NewPipe Bandcamp extractor (2019), GNU GPL v3+.
+// Reworked for PornHub by msiuuu, 2026.
 
 package org.schabi.newpipe.extractor.services.pornhub.linkHandler;
 
 import org.schabi.newpipe.extractor.exceptions.ParsingException;
 import org.schabi.newpipe.extractor.linkhandler.LinkHandlerFactory;
-import org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubExtractorHelper;
-import org.schabi.newpipe.extractor.utils.Utils;
 
-import static org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubExtractorHelper.BASE_URL;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
-/**
- * <p>Tracks don't have standalone ids, they are always in combination with the band id.
- * That's why id = url.</p>
- *
- * <p>Radio (pornhub weekly) shows do have ids.</p>
- */
 public final class PornHubStreamLinkHandlerFactory extends LinkHandlerFactory {
 
-    private static final PornHubStreamLinkHandlerFactory INSTANCE
-            = new PornHubStreamLinkHandlerFactory();
+    private static final String CANONICAL_URL =
+            "https://www.pornhub.com/view_video.php?viewkey=";
+
+    private static final Pattern VIEWKEY_PATTERN =
+            Pattern.compile("[?&]viewkey=([a-zA-Z0-9]+)");
+    private static final Pattern EMBED_PATTERN =
+            Pattern.compile("/embed/([a-zA-Z0-9]+)");
+    private static final Pattern HOST_PATTERN =
+            Pattern.compile("^https?://([a-z0-9-]+\\.)?pornhub\\.com/.+",
+                    Pattern.CASE_INSENSITIVE);
+
+    private static final PornHubStreamLinkHandlerFactory INSTANCE =
+            new PornHubStreamLinkHandlerFactory();
 
     private PornHubStreamLinkHandlerFactory() {
     }
@@ -27,51 +32,36 @@ public final class PornHubStreamLinkHandlerFactory extends LinkHandlerFactory {
         return INSTANCE;
     }
 
-
-    /**
-     * @see PornHubStreamLinkHandlerFactory
-     */
     @Override
-    public String getId(final String url) throws ParsingException, UnsupportedOperationException {
-        if (PornHubExtractorHelper.isRadioUrl(url)) {
-            return url.split("pornhub.com/\\?show=")[1];
-        } else {
-            return getUrl(url);
-        }
-    }
-
-    /**
-     * Clean up url
-     * @see PornHubStreamLinkHandlerFactory
-     */
-    @Override
-    public String getUrl(final String input)
+    public String getId(final String url)
             throws ParsingException, UnsupportedOperationException {
-        if (input.matches("\\d+")) {
-            return BASE_URL + "/?show=" + input;
-        } else {
-            return Utils.replaceHttpWithHttps(input);
+        Matcher m = VIEWKEY_PATTERN.matcher(url);
+        if (m.find()) {
+            return m.group(1);
         }
+        m = EMBED_PATTERN.matcher(url);
+        if (m.find()) {
+            return m.group(1);
+        }
+        throw new ParsingException("Could not extract viewkey from URL: " + url);
     }
 
-    /**
-     * Accepts URLs that point to a pornhub radio show or that are a pornhub
-     * domain and point to a track.
-     */
+    @Override
+    public String getUrl(final String id)
+            throws ParsingException, UnsupportedOperationException {
+        return CANONICAL_URL + id;
+    }
+
     @Override
     public boolean onAcceptUrl(final String url) throws ParsingException {
-
-        // Accept PornHub radio
-        if (PornHubExtractorHelper.isRadioUrl(url)) {
-            return true;
-        }
-
-        // Don't accept URLs that don't point to a track
-        if (!url.toLowerCase().matches("https?://.+\\..+/track/.+")) {
+        if (!HOST_PATTERN.matcher(url).matches()) {
             return false;
         }
-
-        // Test whether domain is supported
-        return PornHubExtractorHelper.isArtistDomain(url);
+        try {
+            getId(url);
+            return true;
+        } catch (final ParsingException e) {
+            return false;
+        }
     }
 }
