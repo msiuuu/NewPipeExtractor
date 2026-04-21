@@ -7,8 +7,6 @@ import static org.schabi.newpipe.extractor.StreamingService.ServiceInfo.MediaCap
 import static org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubExtractorHelper.BASE_URL;
 import static org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubFeaturedExtractor.FEATURED_API_URL;
 import static org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubFeaturedExtractor.KIOSK_FEATURED;
-import static org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubRadioExtractor.KIOSK_RADIO;
-import static org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubRadioExtractor.RADIO_API_URL;
 
 import org.schabi.newpipe.extractor.StreamingService;
 import org.schabi.newpipe.extractor.channel.ChannelExtractor;
@@ -28,11 +26,8 @@ import org.schabi.newpipe.extractor.search.SearchExtractor;
 import org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubChannelExtractor;
 import org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubChannelTabExtractor;
 import org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubCommentsExtractor;
-import org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubExtractorHelper;
 import org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubFeaturedExtractor;
 import org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubPlaylistExtractor;
-import org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubRadioExtractor;
-import org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubRadioStreamExtractor;
 import org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubSearchExtractor;
 import org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubStreamExtractor;
 import org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubSuggestionExtractor;
@@ -121,16 +116,6 @@ public class PornHubService extends StreamingService {
                     KIOSK_FEATURED
             );
 
-            kioskList.addKioskEntry(
-                    (streamingService, url, kioskId) -> new PornHubRadioExtractor(
-                            PornHubService.this,
-                            h.fromUrl(RADIO_API_URL),
-                            kioskId
-                    ),
-                    h,
-                    KIOSK_RADIO
-            );
-
             kioskList.setDefaultKiosk(KIOSK_FEATURED);
 
         } catch (final Exception e) {
@@ -161,9 +146,6 @@ public class PornHubService extends StreamingService {
 
     @Override
     public StreamExtractor getStreamExtractor(final LinkHandler linkHandler) {
-        if (PornHubExtractorHelper.isRadioUrl(linkHandler.getUrl())) {
-            return new PornHubRadioStreamExtractor(this, linkHandler);
-        }
         return new PornHubStreamExtractor(this, linkHandler);
     }
 

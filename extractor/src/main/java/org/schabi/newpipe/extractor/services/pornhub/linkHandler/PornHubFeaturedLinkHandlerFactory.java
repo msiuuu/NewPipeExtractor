@@ -4,15 +4,12 @@ package org.schabi.newpipe.extractor.services.pornhub.linkHandler;
 
 import org.schabi.newpipe.extractor.exceptions.ParsingException;
 import org.schabi.newpipe.extractor.linkhandler.ListLinkHandlerFactory;
-import org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubExtractorHelper;
 import org.schabi.newpipe.extractor.utils.Utils;
 
 import java.util.List;
 
 import static org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubFeaturedExtractor.FEATURED_API_URL;
 import static org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubFeaturedExtractor.KIOSK_FEATURED;
-import static org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubRadioExtractor.KIOSK_RADIO;
-import static org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubRadioExtractor.RADIO_API_URL;
 
 public final class PornHubFeaturedLinkHandlerFactory extends ListLinkHandlerFactory {
 
@@ -33,8 +30,6 @@ public final class PornHubFeaturedLinkHandlerFactory extends ListLinkHandlerFact
             throws ParsingException, UnsupportedOperationException {
         if (id.equals(KIOSK_FEATURED)) {
             return FEATURED_API_URL; // doesn't have a website
-        } else if (id.equals(KIOSK_RADIO)) {
-            return RADIO_API_URL; // doesn't have its own website
         } else {
             return null;
         }
@@ -43,9 +38,7 @@ public final class PornHubFeaturedLinkHandlerFactory extends ListLinkHandlerFact
     @Override
     public String getId(final String url) throws ParsingException, UnsupportedOperationException {
         final String fixedUrl = Utils.replaceHttpWithHttps(url);
-        if (PornHubExtractorHelper.isRadioUrl(fixedUrl) || fixedUrl.equals(RADIO_API_URL)) {
-            return KIOSK_RADIO;
-        } else if (fixedUrl.equals(FEATURED_API_URL)) {
+        if (fixedUrl.equals(FEATURED_API_URL)) {
             return KIOSK_FEATURED;
         } else {
             return null;
@@ -55,8 +48,6 @@ public final class PornHubFeaturedLinkHandlerFactory extends ListLinkHandlerFact
     @Override
     public boolean onAcceptUrl(final String url) {
         final String fixedUrl = Utils.replaceHttpWithHttps(url);
-        return fixedUrl.equals(FEATURED_API_URL)
-                || fixedUrl.equals(RADIO_API_URL)
-                || PornHubExtractorHelper.isRadioUrl(fixedUrl);
+        return fixedUrl.equals(FEATURED_API_URL);
     }
 }
