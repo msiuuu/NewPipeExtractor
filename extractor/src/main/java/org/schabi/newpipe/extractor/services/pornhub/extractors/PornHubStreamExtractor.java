@@ -1,25 +1,18 @@
-// Created by Fynn Godau 2019, licensed GNU GPL version 3 or later
+// Forked from Fynn Godau's NewPipe Bandcamp extractor (2019), GNU GPL v3+.
+// Reworked for PornHub by msiuuu, 2026.
 
 package org.schabi.newpipe.extractor.services.pornhub.extractors;
 
-import static org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubExtractorHelper.getImagesFromImageId;
-import static org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubExtractorHelper.getImagesFromImageUrl;
-import static org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubExtractorHelper.parseDate;
-import static org.schabi.newpipe.extractor.utils.Utils.HTTPS;
-import static org.schabi.newpipe.extractor.utils.Utils.replaceHttpWithHttps;
-
 import com.grack.nanojson.JsonObject;
+import com.grack.nanojson.JsonParser;
 import com.grack.nanojson.JsonParserException;
 
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
 import org.schabi.newpipe.extractor.Image;
-import org.schabi.newpipe.extractor.MediaFormat;
 import org.schabi.newpipe.extractor.StreamingService;
 import org.schabi.newpipe.extractor.downloader.Downloader;
 import org.schabi.newpipe.extractor.exceptions.ExtractionException;
-import org.schabi.newpipe.extractor.exceptions.PaidContentException;
 import org.schabi.newpipe.extractor.exceptions.ParsingException;
 import org.schabi.newpipe.extractor.linkhandler.LinkHandler;
 import org.schabi.newpipe.extractor.localization.DateWrapper;
@@ -29,145 +22,159 @@ import org.schabi.newpipe.extractor.stream.Description;
 import org.schabi.newpipe.extractor.stream.StreamExtractor;
 import org.schabi.newpipe.extractor.stream.StreamType;
 import org.schabi.newpipe.extractor.stream.VideoStream;
-import org.schabi.newpipe.extractor.utils.JsonUtils;
-import org.schabi.newpipe.extractor.utils.Utils;
 
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 public class PornHubStreamExtractor extends StreamExtractor {
-    private JsonObject albumJson;
-    private JsonObject current;
-    private Document document;
 
-    public PornHubStreamExtractor(final StreamingService service, final LinkHandler linkHandler) {
+    private String html;
+    private Document document;
+    private JsonObject flashvars;
+
+    public PornHubStreamExtractor(final StreamingService service,
+                                  final LinkHandler linkHandler) {
         super(service, linkHandler);
     }
-
 
     @Override
     public void onFetchPage(@Nonnull final Downloader downloader)
             throws IOException, ExtractionException {
-        final String html = downloader.get(getLinkHandler().getUrl()).responseBody();
+        html = downloader.get(getLinkHandler().getUrl()).responseBody();
         document = Jsoup.parse(html);
-        albumJson = getAlbumInfoJson(html);
-        current = albumJson.getObject("current");
-
-        if (albumJson.getArray("trackinfo").size() > 1) {
-            // In this case, we are actually viewing an album page!
-            throw new ExtractionException("Page is actually an album, not a track");
-        }
-
-        if (albumJson.getArray("trackinfo").getObject(0).isNull("file")) {
-            throw new PaidContentException("This track is not available without being purchased");
-        }
+        flashvars = extractFlashvars(html, getId());
     }
 
     /**
-     * Get the JSON that contains album's metadata from page
-     *
-     * @param html Website
-     * @return Album metadata JSON
-     * @throws ParsingException In case of a faulty website
+     * PornHub embeds video metadata as a JS object literal named
+     * flashvars_(viewkey) inside a script tag. Finds that marker, then
+     * walks forward brace-by-brace to extract the JSON.
      */
-    public static JsonObject getAlbumInfoJson(final String html) throws ParsingException {
-        try {
-            return JsonUtils.getJsonData(html, "data-tralbum");
-        } catch (final JsonParserException e) {
-            throw new ParsingException("Faulty JSON; page likely does not contain album data", e);
-        } catch (final ArrayIndexOutOfBoundsException e) {
-            throw new ParsingException("JSON does not exist", e);
+    static JsonObject extractFlashvars(final String pageHtml,
+                                                final String viewkey)
+            throws ParsingException {
+        final Pattern marker = Pattern.compile(
+                "var\\s+flashvars_" + Pattern.quote(viewkey) + "\\s*=\\s*\\{",
+                Pattern.CASE_INSENSITIVE);
+        final Matcher m = marker.matcher(pageHtml);
+        if (!m.find()) {
+            throw new ParsingException(
+                    "Could not find flashvars_" + viewkey + " block in page HTML");
         }
+        final int jsonStart = m.end() - 1;
+        final int jsonEnd = findMatchingBrace(pageHtml, jsonStart);
+        if (jsonEnd == -1) {
+            throw new ParsingException("Unterminated flashvars JSON block");
+        }
+        try {
+            return JsonParser.object()
+                    .from(pageHtml.substring(jsonStart, jsonEnd + 1));
+        } catch (final JsonParserException e) {
+            throw new ParsingException("Failed to parse flashvars JSON", e);
+        }
+    }
+
+    private static int findMatchingBrace(final String s, final int openIndex) {
+        int depth = 0;
+        boolean inString = false;
+        boolean escape = false;
+        for (int i = openIndex; i < s.length(); i++) {
+            final char c = s.charAt(i);
+            if (escape) {
+                escape = false;
+                continue;
+            }
+            if (c == '\\') {
+                escape = true;
+                continue;
+            }
+            if (c == '"') {
+                inString = !inString;
+                continue;
+            }
+            if (inString) {
+                continue;
+            }
+            if (c == '{') {
+                depth++;
+            } else if (c == '}') {
+                depth--;
+                if (depth == 0) {
+                    return i;
+                }
+            }
+        }
+        return -1;
     }
 
     @Nonnull
     @Override
     public String getName() throws ParsingException {
-        return current.getString("title");
-    }
-
-    @Nonnull
-    @Override
-    public String getUploaderUrl() throws ParsingException {
-        final String[] parts = getUrl().split("/");
-        // https: (/) (/) * .pornhub.com (/) and leave out the rest
-        return HTTPS + parts[2] + "/";
+        return flashvars.getString("video_title", "");
     }
 
     @Nonnull
     @Override
     public String getUrl() throws ParsingException {
-        return replaceHttpWithHttps(albumJson.getString("url"));
+        return getLinkHandler().getUrl();
+    }
+
+    @Nonnull
+    @Override
+    public String getUploaderUrl() throws ParsingException {
+        return "";
     }
 
     @Nonnull
     @Override
     public String getUploaderName() throws ParsingException {
-        return albumJson.getString("artist");
+        return "";
     }
 
     @Nullable
     @Override
     public String getTextualUploadDate() {
-        return current.getString("publish_date");
+        return null;
     }
 
     @Nullable
     @Override
     public DateWrapper getUploadDate() throws ParsingException {
-        return parseDate(getTextualUploadDate());
+        return null;
     }
 
     @Nonnull
     @Override
     public List<Image> getThumbnails() throws ParsingException {
-        if (albumJson.isNull("art_id")) {
-            return List.of();
-        }
-
-        return getImagesFromImageId(albumJson.getLong("art_id"), true);
+        return List.of();
     }
 
     @Nonnull
     @Override
     public List<Image> getUploaderAvatars() {
-        return getImagesFromImageUrl(document.getElementsByClass("band-photo")
-                .stream()
-                .map(element -> element.attr("src"))
-                .findFirst()
-                .orElse(""));
+        return List.of();
     }
 
     @Nonnull
     @Override
     public Description getDescription() {
-        final String s = Utils.nonEmptyAndNullJoin("\n\n", current.getString("about"),
-                current.getString("lyrics"), current.getString("credits"));
-        return new Description(s, Description.PLAIN_TEXT);
+        return Description.EMPTY_DESCRIPTION;
     }
 
     @Override
     public List<AudioStream> getAudioStreams() {
-        return Collections.singletonList(new AudioStream.Builder()
-                .setId("mp3-128")
-                .setContent(albumJson.getArray("trackinfo")
-                        .getObject(0)
-                        .getObject("file")
-                        .getString("mp3-128"), true)
-                .setMediaFormat(MediaFormat.MP3)
-                .setAverageBitrate(128)
-                .build());
+        return Collections.emptyList();
     }
 
     @Override
     public long getLength() throws ParsingException {
-        return (long) albumJson.getArray("trackinfo").getObject(0)
-                .getDouble("duration");
+        return flashvars.getLong("video_duration", 0L);
     }
 
     @Override
@@ -182,66 +189,37 @@ public class PornHubStreamExtractor extends StreamExtractor {
 
     @Override
     public StreamType getStreamType() {
-        return StreamType.AUDIO_STREAM;
+        return StreamType.VIDEO_STREAM;
     }
 
     @Override
     public PlaylistInfoItemsCollector getRelatedItems() {
-        final PlaylistInfoItemsCollector collector = new PlaylistInfoItemsCollector(getServiceId());
-        document.getElementsByClass("recommended-album")
-                .stream()
-                .map(PornHubRelatedPlaylistInfoItemExtractor::new)
-                .forEach(collector::commit);
-
-        return collector;
+        return new PlaylistInfoItemsCollector(getServiceId());
     }
 
     @Nonnull
     @Override
     public String getCategory() {
-        // Get first tag from html, which is the artist's Genre
-        return document.getElementsByClass("tralbum-tags").stream()
-                .flatMap(element -> element.getElementsByClass("tag").stream())
-                .map(Element::text)
-                .findFirst()
-                .orElse("");
+        return "";
     }
 
     @Nonnull
     @Override
     public String getLicence() {
-        /*
-        Tests resulted in this mapping of ints to licence:
-        https://cloud.disroot.org/s/ZTWBxbQ9fKRmRWJ/preview (screenshot from a PornHub artist's
-        account)
-        */
-
-        switch (current.getInt("license_type")) {
-            case 1:
-                return "All rights reserved ©";
-            case 2:
-                return "CC BY-NC-ND 3.0";
-            case 3:
-                return "CC BY-NC-SA 3.0";
-            case 4:
-                return "CC BY-NC 3.0";
-            case 5:
-                return "CC BY-ND 3.0";
-            case 6:
-                return "CC BY 3.0";
-            case 8:
-                return "CC BY-SA 3.0";
-            default:
-                return "Unknown";
-        }
+        return "";
     }
 
     @Nonnull
     @Override
     public List<String> getTags() {
-        return document.getElementsByAttributeValue("itemprop", "keywords")
-                .stream()
-                .map(Element::text)
-                .collect(Collectors.toList());
+        return List.of();
+    }
+
+    /** Legacy stub kept so bandcamp-scaffolded extractors compile.
+     * Will be deleted when every other extractor is ported off it. */
+    public static JsonObject getAlbumInfoJson(final String pageHtml)
+            throws ParsingException {
+        throw new UnsupportedOperationException(
+                "getAlbumInfoJson is bandcamp legacy; migrate off it");
     }
 }
