@@ -1,7 +1,15 @@
+// Forked from Fynn Godau's NewPipe Bandcamp extractor (2019), GNU GPL v3+.
+// Reworked for PornHub by msiuuu, 2026.
+
 package org.schabi.newpipe.extractor.services.pornhub.extractors;
 
-import com.grack.nanojson.JsonArray;
-import com.grack.nanojson.JsonObject;
+import java.io.IOException;
+
+import javax.annotation.Nonnull;
+
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
 import org.schabi.newpipe.extractor.InfoItem;
 import org.schabi.newpipe.extractor.MultiInfoItemsCollector;
 import org.schabi.newpipe.extractor.Page;
@@ -10,86 +18,102 @@ import org.schabi.newpipe.extractor.channel.tabs.ChannelTabExtractor;
 import org.schabi.newpipe.extractor.channel.tabs.ChannelTabs;
 import org.schabi.newpipe.extractor.downloader.Downloader;
 import org.schabi.newpipe.extractor.exceptions.ExtractionException;
-import org.schabi.newpipe.extractor.exceptions.ParsingException;
 import org.schabi.newpipe.extractor.linkhandler.ListLinkHandler;
-import org.schabi.newpipe.extractor.services.pornhub.extractors.streaminfoitem.PornHubDiscographStreamInfoItemExtractor;
-
-import javax.annotation.Nonnull;
-import java.io.IOException;
+import org.schabi.newpipe.extractor.services.pornhub.extractors.streaminfoitem.PornHubSearchStreamInfoItemExtractor;
 
 public class PornHubChannelTabExtractor extends ChannelTabExtractor {
-    private JsonArray discography;
-    private final String filter;
 
     public PornHubChannelTabExtractor(final StreamingService service,
-                                       final ListLinkHandler linkHandler) {
+                                      final ListLinkHandler linkHandler) {
         super(service, linkHandler);
-
-        final String tab = linkHandler.getContentFilters().get(0);
-        switch (tab) {
-            case ChannelTabs.TRACKS:
-                filter = "track";
-                break;
-            case ChannelTabs.ALBUMS:
-                filter = "album";
-                break;
-            default:
-                throw new IllegalArgumentException("Unsupported channel tab: " + tab);
-        }
-    }
-
-    public static PornHubChannelTabExtractor fromDiscography(final StreamingService service,
-                                                              final ListLinkHandler linkHandler,
-                                                              final JsonArray discography) {
-        final PornHubChannelTabExtractor tabExtractor =
-                new PornHubChannelTabExtractor(service, linkHandler);
-        tabExtractor.discography = discography;
-        return tabExtractor;
     }
 
     @Override
-    public void onFetchPage(@Nonnull final Downloader downloader) throws ParsingException {
-        if (discography == null) {
-            discography = PornHubExtractorHelper.getArtistDetails(getId())
-                    .getArray("discography");
-        }
+    public void onFetchPage(@Nonnull final Downloader downloader) {
+        // fetched per page
     }
 
     @Nonnull
     @Override
-    public InfoItemsPage<InfoItem> getInitialPage() throws IOException, ExtractionException {
-        final MultiInfoItemsCollector collector = new MultiInfoItemsCollector(getServiceId());
-
-        for (final Object discograph : discography) {
-            // A discograph is as an item appears in a discography
-            if (!(discograph instanceof JsonObject)) {
-                continue;
-            }
-
-            final JsonObject discographJsonObject = (JsonObject) discograph;
-            final String itemType = discographJsonObject.getString("item_type", "");
-
-            if (!itemType.equals(filter)) {
-                continue;
-            }
-
-            switch (itemType) {
-                case "track":
-                    collector.commit(new PornHubDiscographStreamInfoItemExtractor(
-                            discographJsonObject, getUrl()));
-                    break;
-                case "album":
-                    collector.commit(new PornHubAlbumInfoItemExtractor(
-                            discographJsonObject, getUrl()));
-                    break;
-            }
-        }
-
-        return new InfoItemsPage<>(collector, null);
+    public InfoItemsPage<InfoItem> getInitialPage()
+            throws IOException, ExtractionException {
+        return getPage(new Page(getUrl()));
     }
 
     @Override
-    public InfoItemsPage<InfoItem> getPage(final Page page) {
-        return null;
+    public InfoItemsPage<InfoItem> getPage(final Page page)
+            throws IOException, ExtractionException {
+        final MultiInfoItemsCollector collector =
+                new MultiInfoItemsCollector(getServiceId());
+        final Document doc = Jsoup.parse(
+                getDownloader().get(page.getUrl()).responseBody());
+
+        final String tab = getLinkHandler().getContentFilters().isEmpty()
+                ? ChannelTabs.VIDEOS
+                : getLinkHandler().getContentFilters().get(0);
+
+        if (ChannelTabs.VIDEOS.equals(tab)) {
+            for (final Element card
+                    : doc.select("ul.videos li.pcVideoListItem")) {
+                collector.commit(
+                        new PornHubSearchStreamInfoItemExtractor(card));
+            }
+        }
+        // PLAYLISTS tab wired in a follow-up.
+
+        return new InfoItemsPage<>(collector, nextPage(page.getUrl(), doc));
+    }
+
+    private static Page nextPage(final String currentUrl, final Document doc) {
+        int maxPage = 1;
+        for (final Element link : doc.select(".pagination3 a")) {
+            try {
+                final int n = Integer.parseInt(link.text().trim());
+                if (n > maxPage) {
+                    maxPage = n;
+                }
+            } catch (final NumberFormatException ignored) {
+                // skip non-numeric ("Prev"/"Next")
+            }
+        }
+
+        int currentPage = 1;
+        final String pageParam = "page=";
+        final int ix = currentUrl.indexOf(pageParam);
+        if (ix >= 0) {
+            final int start = ix + pageParam.length();
+            int end = start;
+            while (end < currentUrl.length()
+                    && Character.isDigit(currentUrl.charAt(end))) {
+                end++;
+            }
+            try {
+                currentPage = Integer.parseInt(
+                        currentUrl.substring(start, end));
+            } catch (final NumberFormatException ignored) {
+                // leave currentPage as 1
+            }
+        }
+
+        if (currentPage >= maxPage) {
+            return null;
+        }
+        final int next = currentPage + 1;
+        final String nextUrl;
+        if (ix >= 0) {
+            final int start = ix + pageParam.length();
+            int end = start;
+            while (end < currentUrl.length()
+                    && Character.isDigit(currentUrl.charAt(end))) {
+                end++;
+            }
+            nextUrl = currentUrl.substring(0, start) + next
+                    + currentUrl.substring(end);
+        } else {
+            nextUrl = currentUrl
+                    + (currentUrl.contains("?") ? "&" : "?")
+                    + "page=" + next;
+        }
+        return new Page(nextUrl);
     }
 }
