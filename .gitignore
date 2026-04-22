@@ -24,3 +24,6 @@ gradle-app.setting
 **/bin
 **.vscode
 *.code-workspace
+
+# Local-only session cookies, never commit
+**/pornhub/extractors/PornHubAuth.java
