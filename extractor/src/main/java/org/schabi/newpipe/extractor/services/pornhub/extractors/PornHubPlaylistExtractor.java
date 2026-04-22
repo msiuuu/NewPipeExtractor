@@ -1,110 +1,97 @@
+// Forked from Fynn Godau's NewPipe Bandcamp extractor (2019), GNU GPL v3+.
+// Reworked for PornHub by msiuuu, 2026.
+
 package org.schabi.newpipe.extractor.services.pornhub.extractors;
 
-import static org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubExtractorHelper.getImagesFromImageId;
-import static org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubExtractorHelper.getImagesFromImageUrl;
-import static org.schabi.newpipe.extractor.services.pornhub.extractors.PornHubStreamExtractor.getAlbumInfoJson;
-import static org.schabi.newpipe.extractor.utils.JsonUtils.getJsonData;
-import static org.schabi.newpipe.extractor.utils.Utils.HTTPS;
+import java.io.IOException;
+import java.util.List;
 
-import com.grack.nanojson.JsonArray;
-import com.grack.nanojson.JsonObject;
-import com.grack.nanojson.JsonParserException;
+import javax.annotation.Nonnull;
 
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
-import org.jsoup.select.Elements;
 import org.schabi.newpipe.extractor.Image;
 import org.schabi.newpipe.extractor.Page;
 import org.schabi.newpipe.extractor.StreamingService;
 import org.schabi.newpipe.extractor.downloader.Downloader;
 import org.schabi.newpipe.extractor.exceptions.ExtractionException;
-import org.schabi.newpipe.extractor.exceptions.PaidContentException;
 import org.schabi.newpipe.extractor.exceptions.ParsingException;
 import org.schabi.newpipe.extractor.linkhandler.ListLinkHandler;
 import org.schabi.newpipe.extractor.playlist.PlaylistExtractor;
-import org.schabi.newpipe.extractor.services.pornhub.extractors.streaminfoitem.PornHubPlaylistStreamInfoItemExtractor;
+import org.schabi.newpipe.extractor.services.pornhub.extractors.streaminfoitem.PornHubSearchStreamInfoItemExtractor;
 import org.schabi.newpipe.extractor.stream.Description;
 import org.schabi.newpipe.extractor.stream.StreamInfoItem;
 import org.schabi.newpipe.extractor.stream.StreamInfoItemsCollector;
 
-import java.io.IOException;
-import java.util.Objects;
-import java.util.List;
-
-import javax.annotation.Nonnull;
-
 public class PornHubPlaylistExtractor extends PlaylistExtractor {
 
-    /**
-     * An arbitrarily chosen number above which cover arts won't be fetched individually for each
-     * track; instead, it will be assumed that every track has the same cover art as the album,
-     * which is not always the case.
-     */
-    private static final int MAXIMUM_INDIVIDUAL_COVER_ARTS = 10;
+    private static final String BASE_URL = "https://www.pornhub.com";
 
     private Document document;
-    private JsonObject albumJson;
-    private JsonArray trackInfo;
-    private String name;
 
     public PornHubPlaylistExtractor(final StreamingService service,
-                                     final ListLinkHandler linkHandler) {
+                                    final ListLinkHandler linkHandler) {
         super(service, linkHandler);
     }
 
     @Override
     public void onFetchPage(@Nonnull final Downloader downloader)
             throws IOException, ExtractionException {
-        final String html = downloader.get(getLinkHandler().getUrl()).responseBody();
-        document = Jsoup.parse(html);
-        albumJson = getAlbumInfoJson(html);
-        trackInfo = albumJson.getArray("trackinfo");
+        document = Jsoup.parse(
+                downloader.get(getLinkHandler().getUrl()).responseBody());
+    }
 
-        try {
-            name = getJsonData(html, "data-embed").getString("album_title");
-        } catch (final JsonParserException e) {
-            throw new ParsingException("Faulty JSON; page likely does not contain album data", e);
-        } catch (final ArrayIndexOutOfBoundsException e) {
-            throw new ParsingException("JSON does not exist", e);
-        }
-
-        if (trackInfo.isEmpty()) {
-            // Albums without trackInfo need to be purchased before they can be played
-            throw new PaidContentException("Album needs to be purchased");
-        }
+    @Nonnull
+    @Override
+    public String getName() throws ParsingException {
+        final Element h1 = document.selectFirst(
+                "h1.title, h1.playlistTitle, .playlistTitle, h1");
+        return h1 == null ? "" : h1.text().trim();
     }
 
     @Nonnull
     @Override
     public List<Image> getThumbnails() throws ParsingException {
-        if (albumJson.isNull("art_id")) {
+        final Element img = document.selectFirst(
+                ".pcVideoListItem .phimage img");
+        if (img == null) {
             return List.of();
-        } else {
-            return getImagesFromImageId(albumJson.getLong("art_id"), true);
         }
+        String src = img.attr("data-image");
+        if (src.isEmpty()) {
+            src = img.attr("src");
+        }
+        if (src.isEmpty()) {
+            return List.of();
+        }
+        return List.of(new Image(src,
+                Image.HEIGHT_UNKNOWN, Image.WIDTH_UNKNOWN,
+                Image.ResolutionLevel.UNKNOWN));
     }
 
     @Override
     public String getUploaderUrl() throws ParsingException {
-        final String[] parts = getUrl().split("/");
-        // https: (/) (/) * .pornhub.com (/) and leave out the rest
-        return HTTPS + parts[2] + "/";
+        final Element el = document.selectFirst(
+                ".usernameWrap a, .userInfo a");
+        if (el == null) {
+            return "";
+        }
+        final String href = el.attr("href");
+        return href.startsWith("http") ? href : BASE_URL + href;
     }
 
     @Override
     public String getUploaderName() {
-        return albumJson.getString("artist");
+        final Element el = document.selectFirst(
+                ".usernameWrap a, .userInfo a");
+        return el == null ? "" : el.text().trim();
     }
 
     @Nonnull
     @Override
     public List<Image> getUploaderAvatars() {
-        return getImagesFromImageUrl(document.getElementsByClass("band-photo")
-                .stream()
-                .map(element -> element.attr("src"))
-                .findFirst()
-                .orElse(""));
+        return List.of();
     }
 
     @Override
@@ -114,66 +101,32 @@ public class PornHubPlaylistExtractor extends PlaylistExtractor {
 
     @Override
     public long getStreamCount() {
-        return trackInfo.size();
+        return document.select(
+                "ul.videos li.pcVideoListItem, li.pcVideoListItem").size();
     }
 
     @Nonnull
     @Override
     public Description getDescription() throws ParsingException {
-        final Element tInfo = document.getElementById("trackInfo");
-        if (tInfo == null) {
-            throw new ParsingException("Could not find trackInfo in document");
-        }
-        final Elements about = tInfo.getElementsByClass("tralbum-about");
-        final Elements credits = tInfo.getElementsByClass("tralbum-credits");
-        final Element license = document.getElementById("license");
-        if (about.isEmpty() && credits.isEmpty() && license == null) {
-            return Description.EMPTY_DESCRIPTION;
-        }
-        final StringBuilder sb = new StringBuilder();
-        if (!about.isEmpty()) {
-            sb.append(Objects.requireNonNull(about.first()).html());
-        }
-        if (!credits.isEmpty()) {
-            sb.append(Objects.requireNonNull(credits.first()).html());
-        }
-        if (license != null) {
-            sb.append(license.html());
-        }
-        return new Description(sb.toString(), Description.HTML);
+        return Description.EMPTY_DESCRIPTION;
     }
 
     @Nonnull
     @Override
-    public InfoItemsPage<StreamInfoItem> getInitialPage() throws ExtractionException {
-
-        final StreamInfoItemsCollector collector = new StreamInfoItemsCollector(getServiceId());
-
-        for (int i = 0; i < trackInfo.size(); i++) {
-            final JsonObject track = trackInfo.getObject(i);
-
-            if (trackInfo.size() < MAXIMUM_INDIVIDUAL_COVER_ARTS) {
-                // Load cover art of every track individually
-                collector.commit(new PornHubPlaylistStreamInfoItemExtractor(
-                        track, getUploaderUrl(), getService()));
-            } else {
-                // Pretend every track has the same cover art as the album
-                collector.commit(new PornHubPlaylistStreamInfoItemExtractor(
-                        track, getUploaderUrl(), getThumbnails()));
-            }
+    public InfoItemsPage<StreamInfoItem> getInitialPage()
+            throws ExtractionException {
+        final StreamInfoItemsCollector collector =
+                new StreamInfoItemsCollector(getServiceId());
+        for (final Element card
+                : document.select(
+                        "ul.videos li.pcVideoListItem, li.pcVideoListItem")) {
+            collector.commit(new PornHubSearchStreamInfoItemExtractor(card));
         }
-
         return new InfoItemsPage<>(collector, null);
     }
 
     @Override
     public InfoItemsPage<StreamInfoItem> getPage(final Page page) {
         return null;
-    }
-
-    @Nonnull
-    @Override
-    public String getName() throws ParsingException {
-        return name;
     }
 }
