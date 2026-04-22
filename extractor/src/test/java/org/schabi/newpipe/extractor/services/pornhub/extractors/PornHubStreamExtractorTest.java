@@ -13,34 +13,34 @@ public class PornHubStreamExtractorTest {
     @Test
     public void extractsFlashvarsFromSimplePage() throws Exception {
         final String html = "<html><body><script>"
-                + "var flashvars_abc123 = {"
+                + "var flashvars_12345 = {"
                 + "\"video_title\": \"Test Video\","
                 + "\"video_duration\": 600,"
                 + "\"image_url\": \"https://example.com/thumb.jpg\""
                 + "};"
                 + "</script></body></html>";
-        final JsonObject result = PornHubStreamExtractor.extractFlashvars(html, "abc123");
+        final JsonObject result = PornHubStreamExtractor.extractFlashvars(html);
         assertEquals("Test Video", result.getString("video_title"));
         assertEquals(600, result.getInt("video_duration"));
     }
 
     @Test
     public void handlesNestedBracesInFlashvars() throws Exception {
-        final String html = "var flashvars_xyz = {"
+        final String html = "var flashvars_99 = {"
                 + "\"mediaDefinitions\":[{\"format\":\"hls\",\"videoUrl\":\"a.m3u8\"}],"
                 + "\"video_title\":\"Nested\""
                 + "};";
-        final JsonObject result = PornHubStreamExtractor.extractFlashvars(html, "xyz");
+        final JsonObject result = PornHubStreamExtractor.extractFlashvars(html);
         assertEquals("Nested", result.getString("video_title"));
     }
 
     @Test
     public void handlesBracesInsideStrings() throws Exception {
-        final String html = "var flashvars_k = {"
+        final String html = "var flashvars_1 = {"
                 + "\"video_title\":\"Weird } string with { braces\","
                 + "\"video_duration\":120"
                 + "};";
-        final JsonObject result = PornHubStreamExtractor.extractFlashvars(html, "k");
+        final JsonObject result = PornHubStreamExtractor.extractFlashvars(html);
         assertEquals("Weird } string with { braces", result.getString("video_title"));
         assertEquals(120, result.getInt("video_duration"));
     }
@@ -49,6 +49,6 @@ public class PornHubStreamExtractorTest {
     public void throwsWhenFlashvarsMissing() {
         final String html = "<html><body>no flashvars here</body></html>";
         assertThrows(ParsingException.class,
-                () -> PornHubStreamExtractor.extractFlashvars(html, "abc"));
+                () -> PornHubStreamExtractor.extractFlashvars(html));
     }
 }
