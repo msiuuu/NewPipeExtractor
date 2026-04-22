@@ -8,7 +8,9 @@ import org.schabi.newpipe.extractor.stream.StreamType;
 import javax.annotation.Nullable;
 
 /**
- * Implements methods that return a constant value in subclasses for better readability.
+ * Base class providing constant defaults for fields that most PornHub
+ * info-item extractors don't surface. Subclasses override only what they
+ * can extract from their specific page context.
  */
 public abstract class PornHubStreamInfoItemExtractor implements StreamInfoItemExtractor {
     private final String uploaderUrl;
@@ -19,7 +21,7 @@ public abstract class PornHubStreamInfoItemExtractor implements StreamInfoItemEx
 
     @Override
     public StreamType getStreamType() {
-        return StreamType.AUDIO_STREAM;
+        return StreamType.VIDEO_STREAM;
     }
 
     @Override
